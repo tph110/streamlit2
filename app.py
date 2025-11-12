@@ -510,38 +510,17 @@ preprocess = transforms.Compose([
 
 def create_tta_transforms():
     """Create test-time augmentation transforms for uncertainty estimation."""
-    from torchvision.transforms import functional as F
-    
     base_transform = transforms.Compose([
         transforms.Resize((IMG_SIZE, IMG_SIZE)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
     
-    # Create augmented versions
+    # Create augmented versions - using simpler, more reliable transforms
     augmented_transforms = []
     
-    # Original (no augmentation)
+    # Original (no augmentation) - always include this
     augmented_transforms.append(base_transform)
-    
-    # Rotations (slight rotations)
-    for angle in [-TTA_ROTATION_DEG, TTA_ROTATION_DEG]:
-        augmented_transforms.append(transforms.Compose([
-            transforms.Resize((IMG_SIZE, IMG_SIZE)),
-            transforms.Lambda(lambda x: F.rotate(x, angle)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ]))
-    
-    # Brightness variations (using ColorJitter correctly)
-    brightness_min = 1.0 - TTA_BRIGHTNESS
-    brightness_max = 1.0 + TTA_BRIGHTNESS
-    augmented_transforms.append(transforms.Compose([
-        transforms.Resize((IMG_SIZE, IMG_SIZE)),
-        transforms.ColorJitter(brightness=(brightness_min, brightness_max)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ]))
     
     # Horizontal flip
     augmented_transforms.append(transforms.Compose([
@@ -551,23 +530,54 @@ def create_tta_transforms():
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ]))
     
-    # Combine: rotation + brightness
+    # Brightness variations (using ColorJitter correctly)
+    brightness_min = max(0.5, 1.0 - TTA_BRIGHTNESS)  # Ensure reasonable range
+    brightness_max = min(1.5, 1.0 + TTA_BRIGHTNESS)
     augmented_transforms.append(transforms.Compose([
         transforms.Resize((IMG_SIZE, IMG_SIZE)),
-        transforms.Lambda(lambda x: F.rotate(x, TTA_ROTATION_DEG)),
         transforms.ColorJitter(brightness=(brightness_min, brightness_max)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ]))
     
-    # Combine: flip + rotation
+    # Combine: flip + brightness
     augmented_transforms.append(transforms.Compose([
         transforms.Resize((IMG_SIZE, IMG_SIZE)),
         transforms.RandomHorizontalFlip(p=1.0),
-        transforms.Lambda(lambda x: F.rotate(x, -TTA_ROTATION_DEG)),
+        transforms.ColorJitter(brightness=(brightness_min, brightness_max)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ]))
+    
+    # Add more variations using different brightness levels
+    for brightness_factor in [0.95, 1.05]:
+        augmented_transforms.append(transforms.Compose([
+            transforms.Resize((IMG_SIZE, IMG_SIZE)),
+            transforms.ColorJitter(brightness=(brightness_factor, brightness_factor)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ]))
+    
+    # Add contrast variations (subtle)
+    augmented_transforms.append(transforms.Compose([
+        transforms.Resize((IMG_SIZE, IMG_SIZE)),
+        transforms.ColorJitter(contrast=0.1),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ]))
+    
+    # Combine: flip + contrast
+    augmented_transforms.append(transforms.Compose([
+        transforms.Resize((IMG_SIZE, IMG_SIZE)),
+        transforms.RandomHorizontalFlip(p=1.0),
+        transforms.ColorJitter(contrast=0.1),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ]))
+    
+    # Add a few identity transforms (just resize, no augmentation) to increase sample size
+    while len(augmented_transforms) < TTA_NUM_SAMPLES:
+        augmented_transforms.append(base_transform)
     
     # Return up to TTA_NUM_SAMPLES transforms
     return augmented_transforms[:TTA_NUM_SAMPLES]
@@ -660,28 +670,65 @@ def predict_image(img: Image.Image, use_tta: bool = True) -> Optional[Dict[str, 
             logger.debug(f"Converted image from {img.mode} to RGB")
        
         # Get TTA transforms
-        tta_transforms = create_tta_transforms() if use_tta else [preprocess]
+        if use_tta:
+            try:
+                tta_transforms = create_tta_transforms()
+                logger.info(f"Created {len(tta_transforms)} TTA transforms")
+            except Exception as e:
+                logger.error(f"Error creating TTA transforms: {e}")
+                logger.info("Falling back to base transform")
+                tta_transforms = [preprocess]
+        else:
+            tta_transforms = [preprocess]
         
         # Collect predictions from TTA
         malignant_predictions = []
         benign_predictions = []
+        failed_transforms = 0
         
         with torch.no_grad():
-            for transform in tta_transforms:
+            for i, transform in enumerate(tta_transforms):
                 try:
-                    x = transform(img).unsqueeze(0)
+                    # Apply transform
+                    x = transform(img)
+                    # Ensure it's a tensor and has batch dimension
+                    if isinstance(x, torch.Tensor):
+                        if x.dim() == 3:
+                            x = x.unsqueeze(0)
+                    else:
+                        logger.warning(f"Transform {i} did not return a tensor")
+                        failed_transforms += 1
+                        continue
+                    
+                    # Get prediction
                     logits = model(x)
                     probs = torch.softmax(logits, dim=1)[0]
                     
                     benign_predictions.append(float(probs[0]))
                     malignant_predictions.append(float(probs[1]))
+                    logger.debug(f"TTA sample {i+1}: malignant={float(probs[1]):.3f}, benign={float(probs[0]):.3f}")
                 except Exception as e:
-                    logger.warning(f"Error in TTA prediction: {e}")
+                    failed_transforms += 1
+                    logger.warning(f"Error in TTA prediction {i+1}/{len(tta_transforms)}: {e}")
                     continue
         
         if len(malignant_predictions) == 0:
-            logger.error("No successful predictions from TTA")
-            return None
+            logger.error(f"No successful predictions from TTA ({failed_transforms} failed)")
+            # Try fallback with just base transform
+            try:
+                logger.info("Attempting fallback prediction with base transform")
+                x = preprocess(img).unsqueeze(0)
+                with torch.no_grad():
+                    logits = model(x)
+                    probs = torch.softmax(logits, dim=1)[0]
+                benign_predictions = [float(probs[0])]
+                malignant_predictions = [float(probs[1])]
+                logger.info("Fallback prediction successful")
+            except Exception as e:
+                logger.error(f"Fallback prediction also failed: {e}")
+                return None
+        
+        logger.info(f"Successful predictions: {len(malignant_predictions)}/{len(tta_transforms)} (failed: {failed_transforms})")
         
         # Calculate mean probabilities
         malignant_prob = float(np.mean(malignant_predictions))
@@ -811,13 +858,21 @@ with col1:
                 file_size_mb = uploaded_file.size / (1024 * 1024)
                 st.caption(f"📏 Image size: {width}x{height} pixels | File size: {file_size_mb:.2f} MB")
 
-                # Clear old state when new file is uploaded
-                if st.session_state.get('last_uploaded') != uploaded_file.name:
-                    for key in list(st.session_state.keys()):
-                        if key in ['result', 'analyzing', 'last_uploaded']:
-                            del st.session_state[key]
-                    st.session_state.last_uploaded = uploaded_file.name
-                    logger.info(f"New image uploaded: {uploaded_file.name}")
+                # Clear old state ONLY when a NEW file is uploaded (not on rerun)
+                current_uploaded_name = uploaded_file.name
+                last_uploaded_name = st.session_state.get('last_uploaded')
+                
+                if last_uploaded_name is None or last_uploaded_name != current_uploaded_name:
+                    # New file uploaded - clear old results
+                    logger.info(f"New image uploaded: {current_uploaded_name} (previous: {last_uploaded_name})")
+                    if 'result' in st.session_state:
+                        del st.session_state['result']
+                    if 'analyzing' in st.session_state:
+                        del st.session_state['analyzing']
+                    st.session_state.last_uploaded = current_uploaded_name
+                else:
+                    # Same file - preserve results
+                    logger.debug(f"Same file as before: {current_uploaded_name}, preserving results")
                
                 st.markdown("<br>", unsafe_allow_html=True)
                
@@ -842,8 +897,12 @@ with col1:
                                 if result:
                                     # Store result (already has proper types from predict_image)
                                     st.session_state.result = result
-                                    logger.info("Analysis completed successfully")
+                                    st.session_state.analyzing = False
+                                    logger.info("Analysis completed successfully - result stored in session_state")
+                                    logger.info(f"Result keys: {list(result.keys())}")
+                                    logger.info(f"Result malignant prob: {result.get('malignant', 'N/A')}")
                                     st.success("✅ Analysis complete!")
+                                    # Don't call st.stop() here - let the page continue to render results
                                 else:
                                     st.error("❌ Failed to generate prediction. Please try again.")
                                     logger.error("Prediction returned None")
@@ -856,9 +915,10 @@ with col1:
                                 st.session_state.analyzing = False
                                 st.stop()
                             finally:
+                                # Ensure analyzing flag is cleared
                                 if st.session_state.get('analyzing', False):
                                     st.session_state.analyzing = False
-
+                        
                         # Force re-render to show results
                         st.rerun()
                         
@@ -891,212 +951,226 @@ with col1:
 with col2:
     st.markdown("### 📊 AI Analysis Results")
    
+    # Check if result exists and is valid
     if 'result' in st.session_state and st.session_state.result is not None:
-        result = st.session_state.result
-        ci = result['confidence_intervals']
-       
-        # Probability visualization
-        st.markdown("#### Diagnostic Probabilities")
-       
-        prob_col1, prob_col2 = st.columns(2)
-       
-        with prob_col1:
-            st.markdown("""
-            <div class="metric-card" style="border-left: 4px solid #C73E1D;">
-                <div style="color: #C73E1D; font-size: 0.9rem; font-weight: 600;">🔴 MALIGNANT</div>
-                <div style="font-size: 2rem; font-weight: 700; color: #333; margin: 0.5rem 0;">
-                    {:.1f}%
-                </div>
-            </div>
-            """.format(result['malignant']*100), unsafe_allow_html=True)
-            st.progress(result['malignant'])
-           
-            # Confidence Interval for Malignant
-            uncertainty_class = f"uncertainty-{ci['malignant']['uncertainty'].lower()}"
-            st.markdown(f"""
-            <div class="ci-container">
-                <div class="ci-header">95% Confidence Interval</div>
-                <div class="ci-range">{ci['malignant']['lower']*100:.1f}% - {ci['malignant']['upper']*100:.1f}%</div>
-                <div class="uncertainty-badge {uncertainty_class}">
-                    {ci['malignant']['uncertainty']} Uncertainty (±{ci['malignant']['margin']*100:.1f}%)
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-       
-        with prob_col2:
-            st.markdown("""
-            <div class="metric-card" style="border-left: 4px solid #06A77D;">
-                <div style="color: #06A77D; font-size: 0.9rem; font-weight: 600;">🟢 BENIGN</div>
-                <div style="font-size: 2rem; font-weight: 700; color: #333; margin: 0.5rem 0;">
-                    {:.1f}%
-                </div>
-            </div>
-            """.format(result['benign']*100), unsafe_allow_html=True)
-            st.progress(result['benign'])
-           
-            # Confidence Interval for Benign
-            uncertainty_class = f"uncertainty-{ci['benign']['uncertainty'].lower()}"
-            st.markdown(f"""
-            <div class="ci-container">
-                <div class="ci-header">95% Confidence Interval</div>
-                <div class="ci-range">{ci['benign']['lower']*100:.1f}% - {ci['benign']['upper']*100:.1f}%</div>
-                <div class="uncertainty-badge {uncertainty_class}">
-                    {ci['benign']['uncertainty']} Uncertainty (±{ci['benign']['margin']*100:.1f}%)
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-       
-        st.markdown("<br>", unsafe_allow_html=True)
-       
-        # Statistical Details Box
-        with st.expander("📈 Statistical Analysis Details", expanded=False):
-            stat_col1, stat_col2 = st.columns(2)
-           
-            with stat_col1:
-                st.metric(
-                    "Model Certainty",
-                    f"{result['model_certainty']:.1f}%",
-                    help="How confident the model is in this prediction"
-                )
-                st.metric(
-                    "Confidence Level",
-                    "95% CI",
-                    help="Statistical confidence level used"
-                )
-           
-            with stat_col2:
-                st.metric(
-                    "Malignant Margin of Error",
-                    f"±{ci['malignant']['margin']*100:.1f}%",
-                    help="Precision of malignant prediction"
-                )
-                st.metric(
-                    "Prediction Reliability",
-                    ci['malignant']['uncertainty'],
-                    help="Based on confidence interval width"
-                )
-           
-            st.info("""
-            **📊 Understanding Confidence Intervals:**
-           
-            The 95% confidence interval is calculated using **Test-Time Augmentation (TTA)**,
-            which generates multiple predictions from augmented versions of your image.
-            This provides a more accurate estimate of model uncertainty than statistical approximations.
-           
-            - **Low Uncertainty**: Margin of error < 8% - High confidence, consistent predictions
-            - **Moderate Uncertainty**: Margin of error 8-15% - Borderline case, some variation
-            - **High Uncertainty**: Margin of error > 15% - Additional assessment recommended
-           
-            **TTA Samples:** {} predictions were used to calculate this confidence interval.
-            """.format(result.get('tta_samples', 'N/A')))
-       
-        st.markdown("<br>", unsafe_allow_html=True)
-       
-        # Risk assessment with CI consideration
-        if result['is_high_risk']:
-            # Check if even the lower bound crosses threshold
-            lower_bound_high_risk = ci['malignant']['lower'] >= MALIGNANT_THRESHOLD
-           
-            st.markdown(f"""
-            <div class="result-high-risk">
-                <h3 style="color: #C73E1D; margin-top: 0;">🚨 HIGH RISK DETECTION</h3>
-                <p style="font-size: 1.1rem; color: #721C1C; margin: 0.5rem 0;">
-                    <strong>Potential malignant lesion detected</strong><br>
-                    Probability: {result['malignant']*100:.1f}% (CI: {ci['malignant']['lower']*100:.1f}%-{ci['malignant']['upper']*100:.1f}%)
-                </p>
-               
-                <div style="background: white; padding: 1rem; border-radius: 5px; margin: 1rem 0;">
-                    <h4 style="color: #C73E1D; margin-top: 0;">⚡ Immediate Action Required:</h4>
-                    <ol style="color: #333; margin: 0;">
-                        <li><strong>Schedule urgent dermatologist consultation</strong> (within 2 weeks)</li>
-                        <li><strong>Bring or send this analysis</strong> with your referral</li>
-                        <li><strong>Do not delay</strong> – early detection saves lives</li>
-                    </ol>
-                </div>
-               
-                <div style="background: {'white' if lower_bound_high_risk else '#FFF3CD'}; padding: 1rem; border-radius: 5px; margin: 1rem 0; border-left: 4px solid {'#C73E1D' if lower_bound_high_risk else '#F18F01'};">
-                    <p style="color: #721C1C; margin: 0; font-size: 0.95rem;">
-                        <strong>🔬 Clinical Interpretation:</strong><br>
-                        {'Even with the lower bound of the confidence interval (' + f"{ci['malignant']['lower']*100:.1f}%" + '), this lesion significantly exceeds the clinical threshold of ' + f"{MALIGNANT_THRESHOLD*100:.0f}%" + ' for urgent referral.' if lower_bound_high_risk else 'The confidence interval spans the clinical threshold. Given the uncertainty and the potential severity, urgent professional evaluation is strongly recommended.'}
-                        The model shows <strong>{ci['malignant']['uncertainty'].lower()} uncertainty</strong> in this prediction.
-                    </p>
-                </div>
-               
-                <p style="color: #721C1C; font-size: 0.95rem; margin: 0.5rem 0;">
-                    <strong>About Malignant Lesions:</strong><br>
-                    May include melanoma, basal cell carcinoma, or squamous cell carcinoma.
-                    Professional evaluation and likely biopsy required. Treatment outcomes are significantly
-                    better with early detection.
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            # Check if upper bound is close to threshold
-            near_threshold = ci['malignant']['upper'] >= (MALIGNANT_THRESHOLD - 0.05)
-           
-            st.markdown(f"""
-            <div class="result-low-risk">
-                <h3 style="color: #06A77D; margin-top: 0;">✅ LOWER RISK INDICATION</h3>
-                <p style="font-size: 1.1rem; color: #0D5C3D; margin: 0.5rem 0;">
-                    <strong>Lesion appears benign</strong><br>
-                    Probability: {result['malignant']*100:.1f}% (CI: {ci['malignant']['lower']*100:.1f}%-{ci['malignant']['upper']*100:.1f}%)
-                </p>
-               
-                <div style="background: white; padding: 1rem; border-radius: 5px; margin: 1rem 0;">
-                    <h4 style="color: #06A77D; margin-top: 0;">📋 Recommended Actions:</h4>
-                    <ol style="color: #333; margin: 0;">
-                        <li><strong>Monitor regularly</strong> for any changes</li>
-                        <li><strong>Document with photos</strong> monthly</li>
-                        <li><strong>Consult healthcare provider</strong> if changes occur</li>
-                        <li><strong>Continue routine skin checks</strong></li>
-                    </ol>
-                </div>
-               
-                {'<div style="background: #FFF3CD; padding: 1rem; border-radius: 5px; margin: 1rem 0; border-left: 4px solid #F18F01;"><p style="color: #856404; margin: 0; font-size: 0.95rem;"><strong>⚠️ Note:</strong> The upper confidence bound (' + f"{ci['malignant']['upper']*100:.1f}%" + ') approaches the clinical threshold. Consider professional evaluation for additional peace of mind.</p></div>' if near_threshold else ''}
-               
-                <p style="color: #0D5C3D; font-size: 0.95rem; margin: 0.5rem 0;">
-                    <strong>Important:</strong> Even benign-appearing lesions require monitoring.
-                    Use the ABCDE rule to watch for warning signs and maintain regular professional
-                    skin examinations. The model shows <strong>{ci['malignant']['uncertainty'].lower()} uncertainty</strong> in this prediction.
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
-       
-        st.markdown("---")
-       
-        # Detailed probabilities
-        with st.expander("📊 Detailed Probability Breakdown"):
-            risk_level_mal = (
-                "Critical" if result['malignant'] >= 0.7 else
-                "High" if result['malignant'] >= 0.5 else
-                "Moderate" if result['malignant'] >= 0.35 else
-                "Low"
-            )
-           
-            risk_level_ben = (
-                "Very High" if result['benign'] >= 0.8 else
-                "High" if result['benign'] >= 0.65 else
-                "Uncertain"
-            )
-           
-            st.markdown(f"""
-            | Category | Probability | 95% CI Range | Uncertainty | Risk Level |
-            |----------|-------------|--------------|-------------|------------|
-            | 🔴 Malignant | **{result['malignant']*100:.2f}%** | {ci['malignant']['lower']*100:.1f}%-{ci['malignant']['upper']*100:.1f}% | {ci['malignant']['uncertainty']} | {risk_level_mal} |
-            | 🟢 Benign | **{result['benign']*100:.2f}%** | {ci['benign']['lower']*100:.1f}%-{ci['benign']['upper']*100:.1f}% | {ci['benign']['uncertainty']} | {risk_level_ben} |
-           
-            **Decision Threshold:** {MALIGNANT_THRESHOLD} (optimized for ~88-90% sensitivity)
-           
-            **Model Certainty:** {result['model_certainty']:.1f}%
-           
-            **Prediction Method:** Test-Time Augmentation (TTA) with {result.get('tta_samples', 'N/A')} samples
-           
-            **Prediction Variance:** {result.get('prediction_variance', 0):.4f}
-           
-            **Clinical Note:** This threshold is set to maximize detection of malignant lesions while
-            minimizing false negatives, which is crucial in medical screening applications. Confidence
-            intervals from TTA provide more accurate uncertainty quantification than statistical approximations.
-            """)
+        try:
+            result = st.session_state.result
+            logger.debug(f"Displaying result: {list(result.keys())}")
+            
+            # Validate result structure
+            if 'malignant' not in result or 'benign' not in result or 'confidence_intervals' not in result:
+                logger.error(f"Invalid result structure: {list(result.keys())}")
+                st.error("❌ Result data is invalid. Please try analyzing again.")
+                st.code(str(result))
+            else:
+                ci = result['confidence_intervals']
+                
+                # Probability visualization
+                st.markdown("#### Diagnostic Probabilities")
+                
+                prob_col1, prob_col2 = st.columns(2)
+                
+                with prob_col1:
+                    st.markdown("""
+                    <div class="metric-card" style="border-left: 4px solid #C73E1D;">
+                        <div style="color: #C73E1D; font-size: 0.9rem; font-weight: 600;">🔴 MALIGNANT</div>
+                        <div style="font-size: 2rem; font-weight: 700; color: #333; margin: 0.5rem 0;">
+                            {:.1f}%
+                        </div>
+                    </div>
+                    """.format(result['malignant']*100), unsafe_allow_html=True)
+                    st.progress(result['malignant'])
+                   
+                    # Confidence Interval for Malignant
+                    uncertainty_class = f"uncertainty-{ci['malignant']['uncertainty'].lower()}"
+                    st.markdown(f"""
+                    <div class="ci-container">
+                        <div class="ci-header">95% Confidence Interval</div>
+                        <div class="ci-range">{ci['malignant']['lower']*100:.1f}% - {ci['malignant']['upper']*100:.1f}%</div>
+                        <div class="uncertainty-badge {uncertainty_class}">
+                            {ci['malignant']['uncertainty']} Uncertainty (±{ci['malignant']['margin']*100:.1f}%)
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with prob_col2:
+                    st.markdown("""
+                    <div class="metric-card" style="border-left: 4px solid #06A77D;">
+                        <div style="color: #06A77D; font-size: 0.9rem; font-weight: 600;">🟢 BENIGN</div>
+                        <div style="font-size: 2rem; font-weight: 700; color: #333; margin: 0.5rem 0;">
+                            {:.1f}%
+                        </div>
+                    </div>
+                    """.format(result['benign']*100), unsafe_allow_html=True)
+                    st.progress(result['benign'])
+                   
+                    # Confidence Interval for Benign
+                    uncertainty_class = f"uncertainty-{ci['benign']['uncertainty'].lower()}"
+                    st.markdown(f"""
+                    <div class="ci-container">
+                        <div class="ci-header">95% Confidence Interval</div>
+                        <div class="ci-range">{ci['benign']['lower']*100:.1f}% - {ci['benign']['upper']*100:.1f}%</div>
+                        <div class="uncertainty-badge {uncertainty_class}">
+                            {ci['benign']['uncertainty']} Uncertainty (±{ci['benign']['margin']*100:.1f}%)
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                
+                # Statistical Details Box
+                with st.expander("📈 Statistical Analysis Details", expanded=False):
+                    stat_col1, stat_col2 = st.columns(2)
+                   
+                    with stat_col1:
+                        st.metric(
+                            "Model Certainty",
+                            f"{result['model_certainty']:.1f}%",
+                            help="How confident the model is in this prediction"
+                        )
+                        st.metric(
+                            "Confidence Level",
+                            "95% CI",
+                            help="Statistical confidence level used"
+                        )
+                   
+                    with stat_col2:
+                        st.metric(
+                            "Malignant Margin of Error",
+                            f"±{ci['malignant']['margin']*100:.1f}%",
+                            help="Precision of malignant prediction"
+                        )
+                        st.metric(
+                            "Prediction Reliability",
+                            ci['malignant']['uncertainty'],
+                            help="Based on confidence interval width"
+                        )
+                   
+                    st.info("""
+                    **📊 Understanding Confidence Intervals:**
+                   
+                    The 95% confidence interval is calculated using **Test-Time Augmentation (TTA)**,
+                    which generates multiple predictions from augmented versions of your image.
+                    This provides a more accurate estimate of model uncertainty than statistical approximations.
+                   
+                    - **Low Uncertainty**: Margin of error < 8% - High confidence, consistent predictions
+                    - **Moderate Uncertainty**: Margin of error 8-15% - Borderline case, some variation
+                    - **High Uncertainty**: Margin of error > 15% - Additional assessment recommended
+                   
+                    **TTA Samples:** {} predictions were used to calculate this confidence interval.
+                    """.format(result.get('tta_samples', 'N/A')))
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                
+                # Risk assessment with CI consideration
+                if result['is_high_risk']:
+                    # Check if even the lower bound crosses threshold
+                    lower_bound_high_risk = ci['malignant']['lower'] >= MALIGNANT_THRESHOLD
+                   
+                    st.markdown(f"""
+                    <div class="result-high-risk">
+                        <h3 style="color: #C73E1D; margin-top: 0;">🚨 HIGH RISK DETECTION</h3>
+                        <p style="font-size: 1.1rem; color: #721C1C; margin: 0.5rem 0;">
+                            <strong>Potential malignant lesion detected</strong><br>
+                            Probability: {result['malignant']*100:.1f}% (CI: {ci['malignant']['lower']*100:.1f}%-{ci['malignant']['upper']*100:.1f}%)
+                        </p>
+                       
+                        <div style="background: white; padding: 1rem; border-radius: 5px; margin: 1rem 0;">
+                            <h4 style="color: #C73E1D; margin-top: 0;">⚡ Immediate Action Required:</h4>
+                            <ol style="color: #333; margin: 0;">
+                                <li><strong>Schedule urgent dermatologist consultation</strong> (within 2 weeks)</li>
+                                <li><strong>Bring or send this analysis</strong> with your referral</li>
+                                <li><strong>Do not delay</strong> – early detection saves lives</li>
+                            </ol>
+                        </div>
+                       
+                        <div style="background: {'white' if lower_bound_high_risk else '#FFF3CD'}; padding: 1rem; border-radius: 5px; margin: 1rem 0; border-left: 4px solid {'#C73E1D' if lower_bound_high_risk else '#F18F01'};">
+                            <p style="color: #721C1C; margin: 0; font-size: 0.95rem;">
+                                <strong>🔬 Clinical Interpretation:</strong><br>
+                                {'Even with the lower bound of the confidence interval (' + f"{ci['malignant']['lower']*100:.1f}%" + '), this lesion significantly exceeds the clinical threshold of ' + f"{MALIGNANT_THRESHOLD*100:.0f}%" + ' for urgent referral.' if lower_bound_high_risk else 'The confidence interval spans the clinical threshold. Given the uncertainty and the potential severity, urgent professional evaluation is strongly recommended.'}
+                                The model shows <strong>{ci['malignant']['uncertainty'].lower()} uncertainty</strong> in this prediction.
+                            </p>
+                        </div>
+                       
+                        <p style="color: #721C1C; font-size: 0.95rem; margin: 0.5rem 0;">
+                            <strong>About Malignant Lesions:</strong><br>
+                            May include melanoma, basal cell carcinoma, or squamous cell carcinoma.
+                            Professional evaluation and likely biopsy required. Treatment outcomes are significantly
+                            better with early detection.
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    # Check if upper bound is close to threshold
+                    near_threshold = ci['malignant']['upper'] >= (MALIGNANT_THRESHOLD - 0.05)
+                   
+                    st.markdown(f"""
+                    <div class="result-low-risk">
+                        <h3 style="color: #06A77D; margin-top: 0;">✅ LOWER RISK INDICATION</h3>
+                        <p style="font-size: 1.1rem; color: #0D5C3D; margin: 0.5rem 0;">
+                            <strong>Lesion appears benign</strong><br>
+                            Probability: {result['malignant']*100:.1f}% (CI: {ci['malignant']['lower']*100:.1f}%-{ci['malignant']['upper']*100:.1f}%)
+                        </p>
+                       
+                        <div style="background: white; padding: 1rem; border-radius: 5px; margin: 1rem 0;">
+                            <h4 style="color: #06A77D; margin-top: 0;">📋 Recommended Actions:</h4>
+                            <ol style="color: #333; margin: 0;">
+                                <li><strong>Monitor regularly</strong> for any changes</li>
+                                <li><strong>Document with photos</strong> monthly</li>
+                                <li><strong>Consult healthcare provider</strong> if changes occur</li>
+                                <li><strong>Continue routine skin checks</strong></li>
+                            </ol>
+                        </div>
+                       
+                        {'<div style="background: #FFF3CD; padding: 1rem; border-radius: 5px; margin: 1rem 0; border-left: 4px solid #F18F01;"><p style="color: #856404; margin: 0; font-size: 0.95rem;"><strong>⚠️ Note:</strong> The upper confidence bound (' + f"{ci['malignant']['upper']*100:.1f}%" + ') approaches the clinical threshold. Consider professional evaluation for additional peace of mind.</p></div>' if near_threshold else ''}
+                       
+                        <p style="color: #0D5C3D; font-size: 0.95rem; margin: 0.5rem 0;">
+                            <strong>Important:</strong> Even benign-appearing lesions require monitoring.
+                            Use the ABCDE rule to watch for warning signs and maintain regular professional
+                            skin examinations. The model shows <strong>{ci['malignant']['uncertainty'].lower()} uncertainty</strong> in this prediction.
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                st.markdown("---")
+                
+                # Detailed probabilities
+                with st.expander("📊 Detailed Probability Breakdown"):
+                    risk_level_mal = (
+                        "Critical" if result['malignant'] >= 0.7 else
+                        "High" if result['malignant'] >= 0.5 else
+                        "Moderate" if result['malignant'] >= 0.35 else
+                        "Low"
+                    )
+                   
+                    risk_level_ben = (
+                        "Very High" if result['benign'] >= 0.8 else
+                        "High" if result['benign'] >= 0.65 else
+                        "Uncertain"
+                    )
+                   
+                    st.markdown(f"""
+                    | Category | Probability | 95% CI Range | Uncertainty | Risk Level |
+                    |----------|-------------|--------------|-------------|------------|
+                    | 🔴 Malignant | **{result['malignant']*100:.2f}%** | {ci['malignant']['lower']*100:.1f}%-{ci['malignant']['upper']*100:.1f}% | {ci['malignant']['uncertainty']} | {risk_level_mal} |
+                    | 🟢 Benign | **{result['benign']*100:.2f}%** | {ci['benign']['lower']*100:.1f}%-{ci['benign']['upper']*100:.1f}% | {ci['benign']['uncertainty']} | {risk_level_ben} |
+                   
+                    **Decision Threshold:** {MALIGNANT_THRESHOLD} (optimized for ~88-90% sensitivity)
+                   
+                    **Model Certainty:** {result['model_certainty']:.1f}%
+                   
+                    **Prediction Method:** Test-Time Augmentation (TTA) with {result.get('tta_samples', 'N/A')} samples
+                   
+                    **Prediction Variance:** {result.get('prediction_variance', 0):.4f}
+                   
+                    **Clinical Note:** This threshold is set to maximize detection of malignant lesions while
+                    minimizing false negatives, which is crucial in medical screening applications. Confidence
+                    intervals from TTA provide more accurate uncertainty quantification than statistical approximations.
+                    """)
+        except Exception as e:
+            logger.error(f"Error displaying results: {e}", exc_info=True)
+            st.error(f"❌ Error displaying results: {e}")
+            st.info("Please try analyzing the image again.")
     else:
         st.markdown("""
         <div class="info-box" style="text-align: center; padding: 2rem;">
