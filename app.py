@@ -805,7 +805,7 @@ def predict_image(img: Image.Image, use_tta: bool = True) -> Optional[Dict[str, 
 render_html("""
 <div class="main-header">
     <h1 class="main-title">🔬 DermScan AI</h1>
-    <p class="subtitle">Professional Dermoscopic Image Analysis with Statistical Confidence</p>
+    <p class="subtitle">Dermoscopic Image Analysis backed by Statistical Confidence</p>
 </div>
 """)
 # Performance metrics
@@ -817,7 +817,7 @@ with col_m2:
 with col_m3:
     st.metric("✓ Accuracy", f"{MODEL_METRICS['accuracy']:.1f}%", help="Overall prediction accuracy")
 with col_m4:
-    st.metric("📊 Training Data", "10,000+", help="Images used for training")
+    st.metric("📊 Training Data", "10,000+ Dermoscopic images", help="Images used for training")
 st.markdown("<br>", unsafe_allow_html=True)
 # Disclaimer section
 render_html("""
