@@ -268,7 +268,7 @@ render_html("""
         margin-bottom: 1rem;
     }
 </style>
-""", unsafe_allow_html=True)
+""")
 
 # Initialize session state keys
 if 'result' not in st.session_state:
