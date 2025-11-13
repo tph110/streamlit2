@@ -1040,8 +1040,8 @@ with col2:
                             help="How confident the model is in this specific image prediction"
                         )
                         st.metric(
-                            "Coverage Level",
-                            "95% Prediction Range",
+                            "Prediction Range",
+                            "95%",
                             help="Range covering 95% of predictions from image augmentations (image-specific, not population-level)"
                         )
                    
