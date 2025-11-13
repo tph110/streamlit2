@@ -1077,70 +1077,72 @@ with col2:
                     # Check if even the lower bound crosses threshold
                     lower_bound_high_risk = ci['malignant']['lower'] >= MALIGNANT_THRESHOLD
                    
-                    render_html(f"""
-                    <div class="result-high-risk">
-                        <h3 style="color: #C73E1D; margin-top: 0;">🚨 HIGH RISK DETECTION</h3>
-                        <p style="font-size: 1.1rem; color: #721C1C; margin: 0.5rem 0;">
-                            <strong>Potential malignant lesion detected</strong><br>
-                            Probability: {result['malignant']*100:.1f}% (CI: {ci['malignant']['lower']*100:.1f}%-{ci['malignant']['upper']*100:.1f}%)
-                        </p>
+                    with st.container():
+                        st.markdown("### 🚨 HIGH RISK DETECTION")
+                        st.markdown("**Potential malignant lesion detected**")
+                        st.markdown(
+                            f"**Probability:** {result['malignant']*100:.1f}% "
+                            f"(CI: {ci['malignant']['lower']*100:.1f}%-{ci['malignant']['upper']*100:.1f}%)"
+                        )
+                        st.markdown("**⚡ Immediate Action Required:**")
+                        st.markdown(
+                            "1. **Schedule urgent dermatologist consultation** (within 2 weeks)\n"
+                            "2. **Bring or send this analysis** with your referral\n"
+                            "3. **Do not delay** – early detection saves lives"
+                        )
 
-                        <div style="background: white; padding: 1rem; border-radius: 5px; margin: 1rem 0;">
-                            <h4 style="color: #C73E1D; margin-top: 0;">⚡ Immediate Action Required:</h4>
-                            <ol style="color: #333; margin: 0;">
-                                <li><strong>Schedule urgent dermatologist consultation</strong> (within 2 weeks)</li>
-                                <li><strong>Bring or send this analysis</strong> with your referral</li>
-                                <li><strong>Do not delay</strong> – early detection saves lives</li>
-                            </ol>
-                        </div>
+                        interpretation = (
+                            f"Even with the lower bound of the confidence interval "
+                            f"({ci['malignant']['lower']*100:.1f}%), this lesion significantly exceeds "
+                            f"the clinical threshold of {MALIGNANT_THRESHOLD*100:.0f}% for urgent referral."
+                            if lower_bound_high_risk
+                            else "The confidence interval spans the clinical threshold. Given the uncertainty and "
+                                 "the potential severity, urgent professional evaluation is strongly recommended."
+                        )
+                        st.warning(
+                            "🔬 **Clinical Interpretation:** "
+                            f"{interpretation}\n\n"
+                            f"The model shows **{ci['malignant']['uncertainty'].lower()} uncertainty** in this prediction."
+                        )
 
-                        <div style="background: {'white' if lower_bound_high_risk else '#FFF3CD'}; padding: 1rem; border-radius: 5px; margin: 1rem 0; border-left: 4px solid {'#C73E1D' if lower_bound_high_risk else '#F18F01'};">
-                            <p style="color: #721C1C; margin: 0; font-size: 0.95rem;">
-                                <strong>🔬 Clinical Interpretation:</strong><br>
-                                {'Even with the lower bound of the confidence interval (' + f"{ci['malignant']['lower']*100:.1f}%" + '), this lesion significantly exceeds the clinical threshold of ' + f"{MALIGNANT_THRESHOLD*100:.0f}%" + ' for urgent referral.' if lower_bound_high_risk else 'The confidence interval spans the clinical threshold. Given the uncertainty and the potential severity, urgent professional evaluation is strongly recommended.'}
-                                The model shows <strong>{ci['malignant']['uncertainty'].lower()} uncertainty</strong> in this prediction.
-                            </p>
-                        </div>
-
-                        <p style="color: #721C1C; font-size: 0.95rem; margin: 0.5rem 0;">
-                            <strong>About Malignant Lesions:</strong><br>
-                            May include melanoma, basal cell carcinoma, or squamous cell carcinoma.
-                            Professional evaluation and likely biopsy required. Treatment outcomes are significantly
-                            better with early detection.
-                        </p>
-                    </div>
-                    """)
+                        st.info(
+                            "**About Malignant Lesions:**\n\n"
+                            "May include melanoma, basal cell carcinoma, or squamous cell carcinoma. "
+                            "Professional evaluation and likely biopsy required. Treatment outcomes are "
+                            "significantly better with early detection."
+                        )
                 else:
                     # Check if upper bound is close to threshold
                     near_threshold = ci['malignant']['upper'] >= (MALIGNANT_THRESHOLD - 0.05)
                    
-                    render_html(f"""
-                    <div class="result-low-risk">
-                        <h3 style="color: #06A77D; margin-top: 0;">✅ LOWER RISK INDICATION</h3>
-                        <p style="font-size: 1.1rem; color: #0D5C3D; margin: 0.5rem 0;">
-                            <strong>Lesion appears benign</strong><br>
-                            Probability: {result['malignant']*100:.1f}% (CI: {ci['malignant']['lower']*100:.1f}%-{ci['malignant']['upper']*100:.1f}%)
-                        </p>
+                    with st.container():
+                        st.markdown("### ✅ LOWER RISK INDICATION")
+                        st.markdown("**Lesion appears benign**")
+                        st.markdown(
+                            f"**Probability:** {result['malignant']*100:.1f}% "
+                            f"(CI: {ci['malignant']['lower']*100:.1f}%-{ci['malignant']['upper']*100:.1f}%)"
+                        )
+                        st.markdown("**📋 Recommended Actions:**")
+                        st.markdown(
+                            "1. **Monitor regularly** for any changes\n"
+                            "2. **Document with photos** monthly\n"
+                            "3. **Consult healthcare provider** if changes occur\n"
+                            "4. **Continue routine skin checks**"
+                        )
 
-                        <div style="background: white; padding: 1rem; border-radius: 5px; margin: 1rem 0;">
-                            <h4 style="color: #06A77D; margin-top: 0;">📋 Recommended Actions:</h4>
-                            <ol style="color: #333; margin: 0;">
-                                <li><strong>Monitor regularly</strong> for any changes</li>
-                                <li><strong>Document with photos</strong> monthly</li>
-                                <li><strong>Consult healthcare provider</strong> if changes occur</li>
-                                <li><strong>Continue routine skin checks</strong></li>
-                            </ol>
-                        </div>
+                        if near_threshold:
+                            st.warning(
+                                "⚠️ **Note:** The upper confidence bound "
+                                f"({ci['malignant']['upper']*100:.1f}%) approaches the clinical threshold. "
+                                "Consider professional evaluation for additional peace of mind."
+                            )
 
-                        {('<div style="background: #FFF3CD; padding: 1rem; border-radius: 5px; margin: 1rem 0; border-left: 4px solid #F18F01;"><p style="color: #856404; margin: 0; font-size: 0.95rem;"><strong>⚠️ Note:</strong> The upper confidence bound (' + f"{ci['malignant']['upper']*100:.1f}%" + ') approaches the clinical threshold. Consider professional evaluation for additional peace of mind.</p></div>') if near_threshold else ''}
-
-                        <p style="color: #0D5C3D; font-size: 0.95rem; margin: 0.5rem 0;">
-                            <strong>Important:</strong> Even benign-appearing lesions require monitoring.
-                            Use the ABCDE rule to watch for warning signs and maintain regular professional
-                            skin examinations. The model shows <strong>{ci['malignant']['uncertainty'].lower()} uncertainty</strong> in this prediction.
-                        </p>
-                    </div>
-                    """)
+                        st.info(
+                            "**Important:** Even benign-appearing lesions require monitoring. "
+                            "Use the ABCDE rule to watch for warning signs and maintain regular professional "
+                            f"skin examinations. The model shows **{ci['malignant']['uncertainty'].lower()} uncertainty** "
+                            "in this prediction."
+                        )
                 
                 st.markdown("---")
                 
