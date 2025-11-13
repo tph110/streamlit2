@@ -204,7 +204,7 @@ render_html("""
         background: #F8FCFD;
     }
    
-    /* Confidence Interval Styling */
+    /* Prediction Range Styling */
     .ci-container {
         background: #f8f9fa;
         padding: 1rem;
@@ -602,12 +602,13 @@ def calculate_confidence_interval_from_predictions(
     confidence_level: float = 0.95
 ) -> Tuple[float, float, float]:
     """
-    Calculate confidence interval from multiple predictions using empirical distribution.
-    Uses percentile-based intervals for proper coverage.
+    Calculate prediction range from multiple TTA predictions using empirical distribution.
+    This is an IMAGE-SPECIFIC prediction range, not a population-level confidence interval.
+    Uses percentile-based intervals to capture prediction variability across augmentations.
     
     Args:
         predictions: Array of predictions from TTA (shape: [n_samples])
-        confidence_level: Confidence level (default 0.95 for 95% CI)
+        confidence_level: Coverage level (default 0.95 for 95% prediction range)
     
     Returns:
         tuple: (lower_bound, upper_bound, margin_of_error)
@@ -805,7 +806,7 @@ def predict_image(img: Image.Image, use_tta: bool = True) -> Optional[Dict[str, 
 render_html("""
 <div class="main-header">
     <h1 class="main-title">🔬 DermScan AI</h1>
-    <p class="subtitle">Dermoscopic Image Analysis backed by Statistical Confidence</p>
+    <p class="subtitle">Dermoscopic Image Analysis with Image-Specific Prediction Ranges</p>
 </div>
 """)
 # Performance metrics
@@ -991,11 +992,11 @@ with col2:
                     """)
                     st.progress(result['malignant'])
                    
-                    # Confidence Interval for Malignant
+                    # Prediction Range for Malignant (image-specific)
                     uncertainty_class = f"uncertainty-{ci['malignant']['uncertainty'].lower()}"
                     render_html(f"""
                     <div class="ci-container">
-                        <div class="ci-header">95% Confidence Interval</div>
+                        <div class="ci-header">95% Prediction Range (Image-Specific)</div>
                         <div class="ci-range">{ci['malignant']['lower']*100:.1f}% - {ci['malignant']['upper']*100:.1f}%</div>
                         <div class="uncertainty-badge {uncertainty_class}">
                             {ci['malignant']['uncertainty']} Uncertainty (±{ci['malignant']['margin']*100:.1f}%)
@@ -1014,11 +1015,11 @@ with col2:
                     """)
                     st.progress(result['benign'])
                    
-                    # Confidence Interval for Benign
+                    # Prediction Range for Benign (image-specific)
                     uncertainty_class = f"uncertainty-{ci['benign']['uncertainty'].lower()}"
                     render_html(f"""
                     <div class="ci-container">
-                        <div class="ci-header">95% Confidence Interval</div>
+                        <div class="ci-header">95% Prediction Range (Image-Specific)</div>
                         <div class="ci-range">{ci['benign']['lower']*100:.1f}% - {ci['benign']['upper']*100:.1f}%</div>
                         <div class="uncertainty-badge {uncertainty_class}">
                             {ci['benign']['uncertainty']} Uncertainty (±{ci['benign']['margin']*100:.1f}%)
@@ -1036,12 +1037,12 @@ with col2:
                         st.metric(
                             "Model Certainty",
                             f"{result['model_certainty']:.1f}%",
-                            help="How confident the model is in this prediction"
+                            help="How confident the model is in this specific image prediction"
                         )
                         st.metric(
-                            "Confidence Level",
-                            "95% CI",
-                            help="Statistical confidence level used"
+                            "Coverage Level",
+                            "95% Prediction Range",
+                            help="Range covering 95% of predictions from image augmentations (image-specific, not population-level)"
                         )
                    
                     with stat_col2:
@@ -1057,17 +1058,23 @@ with col2:
                         )
                    
                     st.info("""
-                    **📊 Understanding Confidence Intervals:**
+                    **📊 Understanding Prediction Ranges (Image-Specific):**
                    
-                    The 95% confidence interval is calculated using **Test-Time Augmentation (TTA)**,
-                    which generates multiple predictions from augmented versions of your image.
-                    This provides a more accurate estimate of model uncertainty than statistical approximations.
+                    The 95% prediction range is calculated using **Test-Time Augmentation (TTA)**,
+                    which generates multiple predictions from augmented versions of YOUR specific image.
+                    This range shows how the model's prediction varies with small changes to the image
+                    (rotation, brightness, etc.) - it is NOT a population-level confidence interval.
                    
-                    - **Low Uncertainty**: Margin of error < 8% - High confidence, consistent predictions
-                    - **Moderate Uncertainty**: Margin of error 8-15% - Borderline case, some variation
-                    - **High Uncertainty**: Margin of error > 15% - Additional assessment recommended
+                    **What this means:**
+                    - Narrow range = predictions are consistent across different image augmentations
+                    - Wide range = predictions vary significantly, indicating borderline features
+                    
+                    **Uncertainty Levels:**
+                    - **Low Uncertainty**: Margin < 8% - Predictions very consistent for this image
+                    - **Moderate Uncertainty**: Margin 8-15% - Some variation across augmentations
+                    - **High Uncertainty**: Margin > 15% - Significant disagreement, additional assessment recommended
                    
-                    **TTA Samples:** {} predictions were used to calculate this confidence interval.
+                    **TTA Samples:** {} predictions from augmented versions of this specific image.
                     """.format(result.get('tta_samples', 'N/A')))
                 
                 st.markdown("<br>", unsafe_allow_html=True)
@@ -1092,11 +1099,11 @@ with col2:
                         )
 
                         interpretation = (
-                            f"Even with the lower bound of the confidence interval "
+                            f"Even with the lower bound of the prediction range "
                             f"({ci['malignant']['lower']*100:.1f}%), this lesion significantly exceeds "
                             f"the clinical threshold of {MALIGNANT_THRESHOLD*100:.0f}% for urgent referral."
                             if lower_bound_high_risk
-                            else "The confidence interval spans the clinical threshold. Given the uncertainty and "
+                            else "The prediction range spans the clinical threshold. Given the uncertainty and "
                                  "the potential severity, urgent professional evaluation is strongly recommended."
                         )
                         st.warning(
@@ -1132,7 +1139,7 @@ with col2:
 
                         if near_threshold:
                             st.warning(
-                                "⚠️ **Note:** The upper confidence bound "
+                                "⚠️ **Note:** The upper prediction range "
                                 f"({ci['malignant']['upper']*100:.1f}%) approaches the clinical threshold. "
                                 "Consider professional evaluation for additional peace of mind."
                             )
@@ -1162,22 +1169,26 @@ with col2:
                     )
                    
                     st.markdown(dedent(f"""
-                    | Category | Probability | 95% CI Range | Uncertainty | Risk Level |
-                    |----------|-------------|--------------|-------------|------------|
+                    | Category | Probability | 95% Prediction Range | Uncertainty | Risk Level |
+                    |----------|-------------|----------------------|-------------|------------|
                     | 🔴 Malignant | **{result['malignant']*100:.2f}%** | {ci['malignant']['lower']*100:.1f}%-{ci['malignant']['upper']*100:.1f}% | {ci['malignant']['uncertainty']} | {risk_level_mal} |
                     | 🟢 Benign | **{result['benign']*100:.2f}%** | {ci['benign']['lower']*100:.1f}%-{ci['benign']['upper']*100:.1f}% | {ci['benign']['uncertainty']} | {risk_level_ben} |
                    
                     **Decision Threshold:** {MALIGNANT_THRESHOLD} (optimized for ~88-90% sensitivity)
                    
-                    **Model Certainty:** {result['model_certainty']:.1f}%
+                    **Model Certainty:** {result['model_certainty']:.1f}% (consistency for this specific image)
                    
                     **Prediction Method:** Test-Time Augmentation (TTA) with {result.get('tta_samples', 'N/A')} samples
                    
                     **Prediction Variance:** {result.get('prediction_variance', 0):.4f}
                    
+                    **Important Note:** The prediction ranges shown are IMAGE-SPECIFIC and represent how predictions 
+                    vary across augmentations of THIS particular image. They are not population-level confidence intervals. 
+                    The ranges capture model uncertainty for this specific case based on prediction consistency across 
+                    augmentations (rotation, brightness, etc.).
+                    
                     **Clinical Note:** This threshold is set to maximize detection of malignant lesions while
-                    minimizing false negatives, which is crucial in medical screening applications. Confidence
-                    intervals from TTA provide more accurate uncertainty quantification than statistical approximations.
+                    minimizing false negatives, which is crucial in medical screening applications.
                     """))
         except Exception as e:
             logger.error(f"Error displaying results: {e}", exc_info=True)
@@ -1187,12 +1198,12 @@ with col2:
         render_html("""
         <div class="info-box" style="text-align: center; padding: 2rem;">
             <h3 style="color: #2E86AB;">📊 Awaiting Analysis</h3>
-            <p style="color: #666;">Upload an image and click "Analyze Lesion" to view results with confidence intervals</p>
+            <p style="color: #666;">Upload an image and click "Analyze Lesion" to view results with prediction ranges</p>
         </div>
         """)
 # Educational content
 st.markdown("<br><br>", unsafe_allow_html=True)
-tab1, tab2, tab3, tab4 = st.tabs(["📖 ABCDE Rule", "🔬 Model Information", "📊 Understanding Confidence", "🌐 Resources"])
+tab1, tab2, tab3, tab4 = st.tabs(["📖 ABCDE Rule", "🔬 Model Information", "📊 Understanding Prediction Ranges", "🌐 Resources"])
 with tab1:
     render_html("""
     ### The ABCDE Rule for Skin Cancer Detection
@@ -1264,55 +1275,73 @@ with tab2:
     """)
 with tab3:
     st.markdown(dedent("""
-    ### 📊 Understanding Confidence Intervals in Medical AI
+    ### 📊 Understanding Prediction Ranges in Medical AI
    
-    #### What are Confidence Intervals?
+    #### What are Prediction Ranges? (vs. Confidence Intervals)
    
-    A **95% confidence interval** represents the range of values where we can be 95% confident
-    the true prediction probability falls. This provides crucial context beyond just the point estimate.
+    A **95% prediction range** shows the range of predictions when we analyze YOUR specific image 
+    multiple times with slight variations. This is IMAGE-SPECIFIC and different from a traditional 
+    statistical confidence interval (which would estimate population-level parameters).
+    
+    **Key Distinction:**
+    - ✅ **What it IS:** Range of predictions across augmentations of THIS image
+    - ❌ **What it's NOT:** A population-level confidence interval or guarantee of accuracy
    
-    #### How We Calculate Uncertainty
+    #### How We Calculate Image-Specific Uncertainty
    
     **Test-Time Augmentation (TTA) Method:**
-    - We use multiple augmented versions of your image (rotations, brightness variations, flips)
-    - Each augmented image generates a prediction
-    - The confidence interval is calculated from the distribution of these predictions
-    - This captures model uncertainty based on how predictions vary with small image changes
+    - We create multiple augmented versions of YOUR image (rotations, brightness variations, flips)
+    - Each augmented version generates a separate prediction
+    - The prediction range is calculated from the distribution of these image-specific predictions
+    - This captures how sensitive the model is to small changes in THIS particular image
    
-    **Why This Method:**
-    - More accurate than statistical approximations
-    - Reflects true model uncertainty
-    - Accounts for image-specific variations
-    - Provides proper coverage guarantees
+    **Why This Method for YOUR Image:**
+    - Shows consistency of predictions for THIS specific case
+    - Reveals if the model is sensitive to minor image variations
+    - Accounts for image-specific features and quality
+    - Narrow range = model is confident about THIS image's features
    
-    #### Why They Matter in Dermoscopy
+    #### What the Ranges Mean for Your Image
    
-    **For Clear Cases:**
-    - Narrow confidence intervals (±5-8%) indicate high confidence
-    - Model predictions are consistent across augmentations
-    - Both bounds clearly above or below the threshold
-    - Stronger clinical decision support
+    **Narrow Prediction Range (±5-8%):**
+    - Model gives very similar predictions despite image augmentations
+    - Features in THIS image are clear and consistent
+    - Low sensitivity to rotation, brightness, or other variations
+    - More reliable for THIS specific image
    
-    **For Borderline Cases:**
-    - Wider confidence intervals (±10-15%) indicate uncertainty
-    - Model predictions vary more with image changes
-    - Bounds may span the clinical threshold
-    - Suggests need for additional assessment or imaging
+    **Wide Prediction Range (±10-15%):**
+    - Model predictions for THIS image vary with augmentations
+    - May indicate borderline or ambiguous features in THIS image
+    - High sensitivity to small image changes
+    - Suggests THIS image may benefit from additional imaging or professional assessment
    
-    #### Uncertainty Levels
+    #### Uncertainty Levels (Image-Specific)
    
-    - 🟢 **Low Uncertainty** (< 8% margin): High confidence, reliable prediction
-    - 🟡 **Moderate Uncertainty** (8-15% margin): Borderline case, professional review recommended
-    - 🔴 **High Uncertainty** (> 15% margin): Additional assessment strongly recommended
+    - 🟢 **Low Uncertainty** (< 8% margin): Predictions very consistent for this image
+    - 🟡 **Moderate Uncertainty** (8-15% margin): Some variation, professional review recommended
+    - 🔴 **High Uncertainty** (> 15% margin): Significant variation, additional assessment strongly recommended
+   
+    #### Important Limitations
+   
+    **These ranges tell you about:**
+    - How consistent predictions are for THIS image across augmentations
+    - Whether THIS image has clear or borderline features
+    - Model sensitivity to small changes in THIS specific case
+    
+    **These ranges do NOT tell you:**
+    - The true probability of malignancy in the population
+    - How accurate the model is overall
+    - Population-level statistical confidence
    
     #### Clinical Application
    
-    Even with uncertainty, the model errs on the side of caution. If the malignant probability
-    or its confidence interval approaches or exceeds the clinical threshold, referral is recommended.
+    Even with narrow prediction ranges indicating consistency, clinical judgment is essential. 
+    If the malignant probability or its prediction range approaches or exceeds the clinical threshold, 
+    professional evaluation is recommended.
    
-    > 💡 **Key Insight:** Confidence intervals from TTA help distinguish between "definitely high risk"
-    > and "uncertain, but warrants caution" cases, improving clinical decision-making by quantifying
-    > model uncertainty more accurately than traditional statistical methods.
+    > 💡 **Key Insight:** Prediction ranges from TTA help distinguish between "definitely high risk"
+    > and "uncertain, but warrants caution" cases by quantifying how sensitive the model is to
+    > variations in THIS specific image, NOT by providing population-level statistical guarantees.
     """))
 with tab4:
     col_r1, col_r2 = st.columns(2)
@@ -1337,13 +1366,13 @@ render_html("""
 <div class="custom-footer">
     <h3 style="color: #2E86AB; margin-bottom: 0.5rem;">🔬 DermScan AI</h3>
     <p style="font-size: 1rem; margin: 0.5rem 0;">
-        <strong>Advanced Dermoscopic Image Analysis with Statistical Confidence</strong>
+        <strong>Advanced Dermoscopic Image Analysis with Image-Specific Prediction Ranges</strong>
     </p>
     <p style="color: #999; font-size: 0.9rem; margin: 0.5rem 0;">
         Educational & Research Tool • Not for Clinical Diagnosis
     </p>
     <p style="color: #666; font-size: 0.85rem; margin: 0.5rem 0;">
-        Model: EfficientNet-B4 | F1: 85.2% | Sensitivity: ~88-90% | Uncertainty: Test-Time Augmentation (TTA)
+        Model: EfficientNet-B4 | F1: 85.2% | Sensitivity: ~88-90% | Uncertainty via TTA (image-specific)
     </p>
     <p style="color: #999; font-size: 0.8rem;">
         Dr Tom Hutchinson • Oxford, United Kingdom
