@@ -264,6 +264,14 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Initialize session state keys
+if 'result' not in st.session_state:
+    st.session_state['result'] = None
+if 'analyzing' not in st.session_state:
+    st.session_state['analyzing'] = False
+if 'last_uploaded' not in st.session_state:
+    st.session_state['last_uploaded'] = None
+
 # ===================== UTILITY FUNCTIONS =====================
 def calculate_file_sha256(file_path: str) -> str:
     """Calculate SHA256 hash of a file."""
@@ -865,11 +873,9 @@ with col1:
                 if last_uploaded_name is None or last_uploaded_name != current_uploaded_name:
                     # New file uploaded - clear old results
                     logger.info(f"New image uploaded: {current_uploaded_name} (previous: {last_uploaded_name})")
-                    if 'result' in st.session_state:
-                        del st.session_state['result']
-                    if 'analyzing' in st.session_state:
-                        del st.session_state['analyzing']
-                    st.session_state.last_uploaded = current_uploaded_name
+                    st.session_state['result'] = None
+                    st.session_state['analyzing'] = False
+                    st.session_state['last_uploaded'] = current_uploaded_name
                 else:
                     # Same file - preserve results
                     logger.debug(f"Same file as before: {current_uploaded_name}, preserving results")
@@ -888,7 +894,7 @@ with col1:
                             logger.warning("Analysis already in progress")
                             st.stop()
 
-                        st.session_state.analyzing = True
+                        st.session_state['analyzing'] = True
                         logger.info("Starting image analysis")
 
                         with st.spinner("🔄 Analyzing image with AI using test-time augmentation..."):
@@ -896,8 +902,8 @@ with col1:
                                 result = predict_image(image, use_tta=True)
                                 if result:
                                     # Store result (already has proper types from predict_image)
-                                    st.session_state.result = result
-                                    st.session_state.analyzing = False
+                                    st.session_state['result'] = result
+                                    st.session_state['analyzing'] = False
                                     logger.info("Analysis completed successfully - result stored in session_state")
                                     logger.info(f"Result keys: {list(result.keys())}")
                                     logger.info(f"Result malignant prob: {result.get('malignant', 'N/A')}")
@@ -906,21 +912,18 @@ with col1:
                                 else:
                                     st.error("❌ Failed to generate prediction. Please try again.")
                                     logger.error("Prediction returned None")
-                                    st.session_state.analyzing = False
+                                    st.session_state['analyzing'] = False
                                     st.stop()
                             except Exception as e:
                                 logger.error(f"Analysis error: {e}", exc_info=True)
                                 st.error(f"❌ Analysis error: {e}")
                                 st.info("💡 **Tip:** Try uploading a different image or check if the image is a valid dermoscopic image.")
-                                st.session_state.analyzing = False
+                                st.session_state['analyzing'] = False
                                 st.stop()
                             finally:
                                 # Ensure analyzing flag is cleared
                                 if st.session_state.get('analyzing', False):
-                                    st.session_state.analyzing = False
-                        
-                        # Force re-render to show results
-                        st.rerun()
+                                    st.session_state['analyzing'] = False
                         
             except Exception as e:
                 logger.error(f"Error processing uploaded image: {e}", exc_info=True)
@@ -952,9 +955,10 @@ with col2:
     st.markdown("### 📊 AI Analysis Results")
    
     # Check if result exists and is valid
-    if 'result' in st.session_state and st.session_state.result is not None:
+    stored_result = st.session_state.get('result')
+    if stored_result is not None:
         try:
-            result = st.session_state.result
+            result = stored_result
             logger.debug(f"Displaying result: {list(result.keys())}")
             
             # Validate result structure
