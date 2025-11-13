@@ -11,6 +11,7 @@ import hashlib
 import logging
 from typing import Optional, Dict, Tuple, Any
 from functools import wraps
+from textwrap import dedent
 # ===================== CONFIGURATION =====================
 # Constants
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
@@ -50,8 +51,13 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed"
 )
+def render_html(content: str) -> None:
+    """Render HTML content safely with consistent dedenting."""
+    st.markdown(dedent(content).strip(), unsafe_allow_html=True)
+
+
 # Custom CSS for professional styling with confidence intervals
-st.markdown("""
+render_html("""
 <style>
     /* Main theme colors */
     :root {
@@ -796,12 +802,12 @@ def predict_image(img: Image.Image, use_tta: bool = True) -> Optional[Dict[str, 
         return None
 # ===================== UI START =====================
 # Custom header
-st.markdown("""
+render_html("""
 <div class="main-header">
     <h1 class="main-title">🔬 DermScan AI</h1>
     <p class="subtitle">Professional Dermoscopic Image Analysis with Statistical Confidence</p>
 </div>
-""", unsafe_allow_html=True)
+""")
 # Performance metrics
 col_m1, col_m2, col_m3, col_m4 = st.columns(4)
 with col_m1:
@@ -814,7 +820,7 @@ with col_m4:
     st.metric("📊 Training Data", "10,000+", help="Images used for training")
 st.markdown("<br>", unsafe_allow_html=True)
 # Disclaimer section
-st.markdown("""
+render_html("""
 <div class="disclaimer-box">
     <div class="disclaimer-title">⚠️ IMPORTANT MEDICAL DISCLAIMER</div>
     <p style="margin: 0.5rem 0; color: #856404; font-size: 1rem;">
@@ -827,7 +833,7 @@ st.markdown("""
         <li>This tool is for educational research purposes only</li>
     </ul>
 </div>
-""", unsafe_allow_html=True)
+""")
 # Main content area
 col1, col2 = st.columns([1, 1], gap="large")
 with col1:
@@ -930,16 +936,16 @@ with col1:
                 st.error(f"❌ Error processing image: {e}")
                 st.info("Please try uploading a different image file.")
     else:
-        st.markdown("""
+        render_html("""
         <div class="upload-section">
             <h3 style="color: #2E86AB;">📁 No Image Uploaded</h3>
             <p style="color: #666;">Click "Browse files" above to upload a dermoscopic image</p>
         </div>
-        """, unsafe_allow_html=True)
+        """)
    
     # Guidelines
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("""
+    render_html("""
     <div class="info-box">
         <strong>📋 Image Quality Guidelines</strong>
         <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
@@ -950,7 +956,7 @@ with col1:
             <li>❌ Do not include patient identifiable information</li>
         </ul>
     </div>
-    """, unsafe_allow_html=True)
+    """)
 with col2:
     st.markdown("### 📊 AI Analysis Results")
    
@@ -975,19 +981,19 @@ with col2:
                 prob_col1, prob_col2 = st.columns(2)
                 
                 with prob_col1:
-                    st.markdown("""
+                    render_html(f"""
                     <div class="metric-card" style="border-left: 4px solid #C73E1D;">
                         <div style="color: #C73E1D; font-size: 0.9rem; font-weight: 600;">🔴 MALIGNANT</div>
                         <div style="font-size: 2rem; font-weight: 700; color: #333; margin: 0.5rem 0;">
-                            {:.1f}%
+                            {result['malignant']*100:.1f}%
                         </div>
                     </div>
-                    """.format(result['malignant']*100), unsafe_allow_html=True)
+                    """)
                     st.progress(result['malignant'])
                    
                     # Confidence Interval for Malignant
                     uncertainty_class = f"uncertainty-{ci['malignant']['uncertainty'].lower()}"
-                    st.markdown(f"""
+                    render_html(f"""
                     <div class="ci-container">
                         <div class="ci-header">95% Confidence Interval</div>
                         <div class="ci-range">{ci['malignant']['lower']*100:.1f}% - {ci['malignant']['upper']*100:.1f}%</div>
@@ -995,22 +1001,22 @@ with col2:
                             {ci['malignant']['uncertainty']} Uncertainty (±{ci['malignant']['margin']*100:.1f}%)
                         </div>
                     </div>
-                    """, unsafe_allow_html=True)
+                    """)
                 
                 with prob_col2:
-                    st.markdown("""
+                    render_html(f"""
                     <div class="metric-card" style="border-left: 4px solid #06A77D;">
                         <div style="color: #06A77D; font-size: 0.9rem; font-weight: 600;">🟢 BENIGN</div>
                         <div style="font-size: 2rem; font-weight: 700; color: #333; margin: 0.5rem 0;">
-                            {:.1f}%
+                            {result['benign']*100:.1f}%
                         </div>
                     </div>
-                    """.format(result['benign']*100), unsafe_allow_html=True)
+                    """)
                     st.progress(result['benign'])
                    
                     # Confidence Interval for Benign
                     uncertainty_class = f"uncertainty-{ci['benign']['uncertainty'].lower()}"
-                    st.markdown(f"""
+                    render_html(f"""
                     <div class="ci-container">
                         <div class="ci-header">95% Confidence Interval</div>
                         <div class="ci-range">{ci['benign']['lower']*100:.1f}% - {ci['benign']['upper']*100:.1f}%</div>
@@ -1018,7 +1024,7 @@ with col2:
                             {ci['benign']['uncertainty']} Uncertainty (±{ci['benign']['margin']*100:.1f}%)
                         </div>
                     </div>
-                    """, unsafe_allow_html=True)
+                    """)
                 
                 st.markdown("<br>", unsafe_allow_html=True)
                 
@@ -1071,14 +1077,14 @@ with col2:
                     # Check if even the lower bound crosses threshold
                     lower_bound_high_risk = ci['malignant']['lower'] >= MALIGNANT_THRESHOLD
                    
-                    st.markdown(f"""
+                    render_html(f"""
                     <div class="result-high-risk">
                         <h3 style="color: #C73E1D; margin-top: 0;">🚨 HIGH RISK DETECTION</h3>
                         <p style="font-size: 1.1rem; color: #721C1C; margin: 0.5rem 0;">
                             <strong>Potential malignant lesion detected</strong><br>
                             Probability: {result['malignant']*100:.1f}% (CI: {ci['malignant']['lower']*100:.1f}%-{ci['malignant']['upper']*100:.1f}%)
                         </p>
-                       
+
                         <div style="background: white; padding: 1rem; border-radius: 5px; margin: 1rem 0;">
                             <h4 style="color: #C73E1D; margin-top: 0;">⚡ Immediate Action Required:</h4>
                             <ol style="color: #333; margin: 0;">
@@ -1087,7 +1093,7 @@ with col2:
                                 <li><strong>Do not delay</strong> – early detection saves lives</li>
                             </ol>
                         </div>
-                       
+
                         <div style="background: {'white' if lower_bound_high_risk else '#FFF3CD'}; padding: 1rem; border-radius: 5px; margin: 1rem 0; border-left: 4px solid {'#C73E1D' if lower_bound_high_risk else '#F18F01'};">
                             <p style="color: #721C1C; margin: 0; font-size: 0.95rem;">
                                 <strong>🔬 Clinical Interpretation:</strong><br>
@@ -1095,7 +1101,7 @@ with col2:
                                 The model shows <strong>{ci['malignant']['uncertainty'].lower()} uncertainty</strong> in this prediction.
                             </p>
                         </div>
-                       
+
                         <p style="color: #721C1C; font-size: 0.95rem; margin: 0.5rem 0;">
                             <strong>About Malignant Lesions:</strong><br>
                             May include melanoma, basal cell carcinoma, or squamous cell carcinoma.
@@ -1103,19 +1109,19 @@ with col2:
                             better with early detection.
                         </p>
                     </div>
-                    """, unsafe_allow_html=True)
+                    """)
                 else:
                     # Check if upper bound is close to threshold
                     near_threshold = ci['malignant']['upper'] >= (MALIGNANT_THRESHOLD - 0.05)
                    
-                    st.markdown(f"""
+                    render_html(f"""
                     <div class="result-low-risk">
                         <h3 style="color: #06A77D; margin-top: 0;">✅ LOWER RISK INDICATION</h3>
                         <p style="font-size: 1.1rem; color: #0D5C3D; margin: 0.5rem 0;">
                             <strong>Lesion appears benign</strong><br>
                             Probability: {result['malignant']*100:.1f}% (CI: {ci['malignant']['lower']*100:.1f}%-{ci['malignant']['upper']*100:.1f}%)
                         </p>
-                       
+
                         <div style="background: white; padding: 1rem; border-radius: 5px; margin: 1rem 0;">
                             <h4 style="color: #06A77D; margin-top: 0;">📋 Recommended Actions:</h4>
                             <ol style="color: #333; margin: 0;">
@@ -1125,16 +1131,16 @@ with col2:
                                 <li><strong>Continue routine skin checks</strong></li>
                             </ol>
                         </div>
-                       
-                        {'<div style="background: #FFF3CD; padding: 1rem; border-radius: 5px; margin: 1rem 0; border-left: 4px solid #F18F01;"><p style="color: #856404; margin: 0; font-size: 0.95rem;"><strong>⚠️ Note:</strong> The upper confidence bound (' + f"{ci['malignant']['upper']*100:.1f}%" + ') approaches the clinical threshold. Consider professional evaluation for additional peace of mind.</p></div>' if near_threshold else ''}
-                       
+
+                        {('<div style="background: #FFF3CD; padding: 1rem; border-radius: 5px; margin: 1rem 0; border-left: 4px solid #F18F01;"><p style="color: #856404; margin: 0; font-size: 0.95rem;"><strong>⚠️ Note:</strong> The upper confidence bound (' + f"{ci['malignant']['upper']*100:.1f}%" + ') approaches the clinical threshold. Consider professional evaluation for additional peace of mind.</p></div>') if near_threshold else ''}
+
                         <p style="color: #0D5C3D; font-size: 0.95rem; margin: 0.5rem 0;">
                             <strong>Important:</strong> Even benign-appearing lesions require monitoring.
                             Use the ABCDE rule to watch for warning signs and maintain regular professional
                             skin examinations. The model shows <strong>{ci['malignant']['uncertainty'].lower()} uncertainty</strong> in this prediction.
                         </p>
                     </div>
-                    """, unsafe_allow_html=True)
+                    """)
                 
                 st.markdown("---")
                 
@@ -1153,7 +1159,7 @@ with col2:
                         "Uncertain"
                     )
                    
-                    st.markdown(f"""
+                    st.markdown(dedent(f"""
                     | Category | Probability | 95% CI Range | Uncertainty | Risk Level |
                     |----------|-------------|--------------|-------------|------------|
                     | 🔴 Malignant | **{result['malignant']*100:.2f}%** | {ci['malignant']['lower']*100:.1f}%-{ci['malignant']['upper']*100:.1f}% | {ci['malignant']['uncertainty']} | {risk_level_mal} |
@@ -1170,55 +1176,55 @@ with col2:
                     **Clinical Note:** This threshold is set to maximize detection of malignant lesions while
                     minimizing false negatives, which is crucial in medical screening applications. Confidence
                     intervals from TTA provide more accurate uncertainty quantification than statistical approximations.
-                    """)
+                    """))
         except Exception as e:
             logger.error(f"Error displaying results: {e}", exc_info=True)
             st.error(f"❌ Error displaying results: {e}")
             st.info("Please try analyzing the image again.")
     else:
-        st.markdown("""
+        render_html("""
         <div class="info-box" style="text-align: center; padding: 2rem;">
             <h3 style="color: #2E86AB;">📊 Awaiting Analysis</h3>
             <p style="color: #666;">Upload an image and click "Analyze Lesion" to view results with confidence intervals</p>
         </div>
-        """, unsafe_allow_html=True)
+        """)
 # Educational content
 st.markdown("<br><br>", unsafe_allow_html=True)
 tab1, tab2, tab3, tab4 = st.tabs(["📖 ABCDE Rule", "🔬 Model Information", "📊 Understanding Confidence", "🌐 Resources"])
 with tab1:
-    st.markdown("""
+    render_html("""
     ### The ABCDE Rule for Skin Cancer Detection
-   
+
     **Watch for these warning signs in moles and lesions:**
-   
+
     <div style="background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-   
+
     **🅰️ Asymmetry**
     One half of the mole doesn't match the other half
-   
+
     **🅱️ Border Irregularity**
     Edges are ragged, notched, or blurred rather than smooth
-   
+
     **©️ Color Variation**
     Multiple colors present or uneven color distribution
-   
+
     **🅳 Diameter**
     Larger than 6mm (about the size of a pencil eraser)
-   
+
     **🅴 Evolving**
     Changes in size, shape, color, elevation, or new symptoms (bleeding, itching, crusting)
-   
+
     </div>
-   
+
     <br>
-   
+
     > ⚠️ **If you notice ANY of these signs, consult a dermatologist immediately!**
-    """, unsafe_allow_html=True)
+    """)
 with tab2:
     col_t1, col_t2 = st.columns(2)
    
     with col_t1:
-        st.markdown(f"""
+        st.markdown(dedent(f"""
         **🏗️ Architecture**
         EfficientNet-B4 (Clinical-Grade CNN)
        
@@ -1231,10 +1237,10 @@ with tab2:
         **🔍 Sensitivity**
         {MODEL_METRICS['sensitivity']:.2f}% (at 0.5 threshold)
         ~88-90% (at {MALIGNANT_THRESHOLD} threshold)
-        """)
+        """))
    
     with col_t2:
-        st.markdown(f"""
+        st.markdown(dedent(f"""
         **✓ Accuracy**
         {MODEL_METRICS['accuracy']:.2f}%
        
@@ -1246,7 +1252,7 @@ with tab2:
        
         **🔬 Model Purpose**
         Research & Educational Tool
-        """)
+        """))
    
     st.info("""
     **Note on Model Performance:**
@@ -1255,7 +1261,7 @@ with tab2:
     applications where missing a malignant case is more serious than a false positive.
     """)
 with tab3:
-    st.markdown("""
+    st.markdown(dedent("""
     ### 📊 Understanding Confidence Intervals in Medical AI
    
     #### What are Confidence Intervals?
@@ -1305,27 +1311,27 @@ with tab3:
     > 💡 **Key Insight:** Confidence intervals from TTA help distinguish between "definitely high risk"
     > and "uncertain, but warrants caution" cases, improving clinical decision-making by quantifying
     > model uncertainty more accurately than traditional statistical methods.
-    """)
+    """))
 with tab4:
     col_r1, col_r2 = st.columns(2)
    
     with col_r1:
-        st.markdown("""
+        st.markdown(dedent("""
         **🇬🇧 UK Resources**
         - [British Association of Dermatology](https://www.skinhealthinfo.org.uk)
         - [NHS Skin Cancer Information](https://www.nhs.uk/conditions/skin-cancer/)
         - [Cancer Research UK](https://www.cancerresearchuk.org/about-cancer/skin-cancer)
-        """)
+        """))
    
     with col_r2:
-        st.markdown("""
+        st.markdown(dedent("""
         **🇺🇸 US Resources**
         - [American Academy of Dermatology](https://www.aad.org/find-a-derm)
         - [Skin Cancer Foundation](https://www.skincancer.org)
         - [American Cancer Society](https://www.cancer.org/cancer/skin-cancer.html)
-        """)
+        """))
 # Footer
-st.markdown("""
+render_html("""
 <div class="custom-footer">
     <h3 style="color: #2E86AB; margin-bottom: 0.5rem;">🔬 DermScan AI</h3>
     <p style="font-size: 1rem; margin: 0.5rem 0;">
@@ -1341,4 +1347,4 @@ st.markdown("""
         Dr Tom Hutchinson • Oxford, United Kingdom
     </p>
 </div>
-""", unsafe_allow_html=True)
+""")
