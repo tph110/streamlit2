@@ -1052,7 +1052,7 @@ with col2:
                             help="Precision of malignant prediction"
                         )
                         st.metric(
-                            "Prediction Reliability",
+                            "Uncertainty Level",
                             ci['malignant']['uncertainty'],
                             help="Based on confidence interval width"
                         )
@@ -1061,7 +1061,7 @@ with col2:
                     **📊 Understanding Prediction Ranges (Image-Specific):**
                    
                     The 95% prediction range is calculated using **Test-Time Augmentation (TTA)**,
-                    which generates multiple predictions from augmented versions of YOUR specific image.
+                    which generates multiple predictions from augmented versions of the uploaded image.
                     This range shows how the model's prediction varies with small changes to the image
                     (rotation, brightness, etc.) - it is NOT a population-level confidence interval.
                    
