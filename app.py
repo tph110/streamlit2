@@ -1035,7 +1035,7 @@ with col2:
                    
                     with stat_col1:
                         st.metric(
-                            "Model Certainty",
+                            "Model Uncertainty Score",
                             f"{result['model_certainty']:.1f}%",
                             help="How confident the model is in this specific image prediction"
                         )
