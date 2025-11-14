@@ -1290,16 +1290,16 @@ with tab3:
     #### How We Calculate Image-Specific Uncertainty
    
     **Test-Time Augmentation (TTA) Method:**
-    - We create multiple augmented versions of YOUR image (rotations, brightness variations, flips)
+    - We create multiple augmented versions of the image (rotations, brightness variations, flips)
     - Each augmented version generates a separate prediction
     - The prediction range is calculated from the distribution of these image-specific predictions
     - This captures how sensitive the model is to small changes in THIS particular image
    
-    **Why This Method for YOUR Image:**
+    **Why This Method for Image Analysis:**
     - Shows consistency of predictions for THIS specific case
     - Reveals if the model is sensitive to minor image variations
     - Accounts for image-specific features and quality
-    - Narrow range = model is confident about THIS image's features
+    - Narrow range = model is confident about the image's features
    
     #### What the Ranges Mean for Your Image
    
@@ -1307,13 +1307,13 @@ with tab3:
     - Model gives very similar predictions despite image augmentations
     - Features in THIS image are clear and consistent
     - Low sensitivity to rotation, brightness, or other variations
-    - More reliable for THIS specific image
+    - More reliable for this specific image
    
     **Wide Prediction Range (±10-15%):**
     - Model predictions for THIS image vary with augmentations
-    - May indicate borderline or ambiguous features in THIS image
+    - May indicate borderline or ambiguous features in the image
     - High sensitivity to small image changes
-    - Suggests THIS image may benefit from additional imaging or professional assessment
+    - Suggests that the image may benefit from additional imaging or professional assessment
    
     #### Uncertainty Levels (Image-Specific)
    
@@ -1324,8 +1324,8 @@ with tab3:
     #### Important Limitations
    
     **These ranges tell you about:**
-    - How consistent predictions are for THIS image across augmentations
-    - Whether THIS image has clear or borderline features
+    - How consistent predictions are for this image across augmentations
+    - Whether this image has clear or borderline features
     - Model sensitivity to small changes in THIS specific case
     
     **These ranges do NOT tell you:**
