@@ -818,7 +818,7 @@ with col_m2:
 with col_m3:
     st.metric("✓ Accuracy", f"{MODEL_METRICS['accuracy']:.1f}%", help="Overall prediction accuracy")
 with col_m4:
-    st.metric("📊 Training Data", "10,000+ Dermoscopic images", help="Images used for training")
+    st.metric("📊 Training Data", "10,000+ images", help="Dermoscopic images used for training")
 st.markdown("<br>", unsafe_allow_html=True)
 # Disclaimer section
 render_html("""
@@ -959,7 +959,7 @@ with col1:
     </div>
     """)
 with col2:
-    st.markdown("### 📊 AI Analysis Results")
+    st.markdown("### 📊 AI Analysis Results - refer urgently if Malignancy Risk ≥35%")
    
     # Check if result exists and is valid
     stored_result = st.session_state.get('result')
