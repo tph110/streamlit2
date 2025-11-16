@@ -1205,8 +1205,7 @@ with tab1:
     col_t1, col_t2 = st.columns(2)
    
     with col_t1:
-        st.markdown(dedent(f"""
-        **🏗️ Architecture**
+        st.markdown("### **🏗️ Architecture**")
         EfficientNet-B4 (Clinical-Grade CNN)
        
         **📚 Training Dataset**
