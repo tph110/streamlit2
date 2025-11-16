@@ -1237,7 +1237,7 @@ with tab1:
    
     st.info("""
     **Note on Model Performance:**
-    The threshold is optimized to maximize sensitivity (detection of malignant cases) at the expense
+    The threshold is optimized to maximise sensitivity (detection of malignant cases) at the expense
     of some specificity. This "better safe than sorry" approach is standard in medical screening
     applications where missing a malignant case is more serious than a false positive.
     """)
