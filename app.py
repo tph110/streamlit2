@@ -1199,13 +1199,12 @@ with col2:
         """)
 # Educational content
 st.markdown("<br><br>", unsafe_allow_html=True)
-tab1, tab2, tab3, tab4 = st.tabs(["📖 ABCDE Rule", "🔬 Model Information", "📊 Understanding Prediction Ranges", "🌐 Resources"])
+tab1, tab2, tab3, tab4 = st.tabs(["🔬 Model Information", "📊 Understanding Prediction Ranges", "🌐 Resources"])
 with tab1:
     render_html("""
-    col_t1, col_t2 = st.columns(2)
    
     with col_t1:
-        st.markdown("### **🏗️ Architecture**")
+        **🏗️ Architecture**
         EfficientNet-B4 (Clinical-Grade CNN)
        
         **📚 Training Dataset**
