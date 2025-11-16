@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 # Page config with enhanced metadata
 st.set_page_config(
-    page_title="DermScan AI | Professional Dermoscopic Analysis",
+    page_title="DermScan | AI Powered Dermoscopic Image Analysis",
     page_icon="🔬",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -364,7 +364,7 @@ def download_file(url: str, path: str, max_retries: int = 3) -> bool:
             return True
        
     logger.info(f"Downloading model from {url}")
-    st.info("🔄 Downloading DermScan AI model... This may take a moment.")
+    st.info("🔄 Downloading DermScan model engine... This may take a moment.")
     
     for attempt in range(max_retries):
         try:
@@ -823,13 +823,13 @@ st.markdown("<br>", unsafe_allow_html=True)
 # Disclaimer section
 render_html("""
 <div class="disclaimer-box">
-    <div class="disclaimer-title">⚠️ IMPORTANT MEDICAL DISCLAIMER</div>
+    <div class="disclaimer-title">⚠️ IMPORTANT DISCLAIMER</div>
     <p style="margin: 0.5rem 0; color: #856404; font-size: 1rem;">
         <strong>FOR RESEARCH AND EDUCATIONAL PURPOSES ONLY</strong>
     </p>
     <ul style="color: #856404; margin: 0.5rem 0; padding-left: 1.5rem;">
         <li><strong>NOT FDA/NICE APPROVED</strong> - Not intended for diagnostic use</li>
-        <li><strong>ALWAYS</strong> consult a qualified dermatologist or medical professional</li>
+        <li><strong>ALWAYS</strong> consult a dermatologist or medical professional</li>
         <li>Only a <strong>biopsy</strong> can definitively diagnose skin cancer</li>
         <li>This tool is for educational research purposes only</li>
     </ul>
@@ -1035,10 +1035,11 @@ with col2:
                    
                     with stat_col1:
                         st.metric(
-                            "Model Certainty",
-                            f"{result['model_certainty']:.1f}%",
-                            help="How confident the model is in this specific image prediction"
+                            "Uncertainty Level",
+                            ci['malignant']['uncertainty'],
+                            help="Based on confidence interval width"
                         )
+    
                         st.metric(
                             "Prediction Range",
                             "95%",
@@ -1051,12 +1052,7 @@ with col2:
                             f"±{ci['malignant']['margin']*100:.1f}%",
                             help="Precision of malignant prediction"
                         )
-                        st.metric(
-                            "Uncertainty Level",
-                            ci['malignant']['uncertainty'],
-                            help="Based on confidence interval width"
-                        )
-                   
+                        
                     st.info("""
                     **📊 Understanding Prediction Ranges (Image-Specific):**
                    
@@ -1113,7 +1109,7 @@ with col2:
                         )
 
                         st.info(
-                            "**About Malignant Lesions:**\n\n"
+                            "**Malignant Lesions:**\n\n"
                             "May include melanoma, basal cell carcinoma, or squamous cell carcinoma. "
                             "Professional evaluation and likely biopsy required. Treatment outcomes are "
                             "significantly better with early detection."
@@ -1206,34 +1202,6 @@ st.markdown("<br><br>", unsafe_allow_html=True)
 tab1, tab2, tab3, tab4 = st.tabs(["📖 ABCDE Rule", "🔬 Model Information", "📊 Understanding Prediction Ranges", "🌐 Resources"])
 with tab1:
     render_html("""
-    ### The ABCDE Rule for Skin Cancer Detection
-
-    **Watch for these warning signs in moles and lesions:**
-
-    <div style="background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-
-    **🅰️ Asymmetry**
-    One half of the mole doesn't match the other half
-
-    **🅱️ Border Irregularity**
-    Edges are ragged, notched, or blurred rather than smooth
-
-    **©️ Color Variation**
-    Multiple colors present or uneven color distribution
-
-    **🅳 Diameter**
-    Larger than 6mm (about the size of a pencil eraser)
-
-    **🅴 Evolving**
-    Changes in size, shape, color, elevation, or new symptoms (bleeding, itching, crusting)
-
-    </div>
-
-    <br>
-
-    > ⚠️ **If you notice ANY of these signs, consult a dermatologist immediately!**
-    """)
-with tab2:
     col_t1, col_t2 = st.columns(2)
    
     with col_t1:
@@ -1273,7 +1241,7 @@ with tab2:
     of some specificity. This "better safe than sorry" approach is standard in medical screening
     applications where missing a malignant case is more serious than a false positive.
     """)
-with tab3:
+with tab2:
     st.markdown(dedent("""
     ### 📊 Understanding Prediction Ranges in Medical AI
    
@@ -1343,7 +1311,7 @@ with tab3:
     > and "uncertain, but warrants caution" cases by quantifying how sensitive the model is to
     > variations in THIS specific image, NOT by providing population-level statistical guarantees.
     """))
-with tab4:
+with tab3:
     col_r1, col_r2 = st.columns(2)
    
     with col_r1:
