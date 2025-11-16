@@ -1217,7 +1217,7 @@ with tab1:
         **🔍 Sensitivity**
         {MODEL_METRICS['sensitivity']:.2f}% (at 0.5 threshold)
         ~88-90% (at {MALIGNANT_THRESHOLD} threshold)
-        """))
+        """)
    
     with col_t2:
         st.markdown(dedent(f"""
